@@ -1,7 +1,8 @@
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/Denoiser.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/ImagePatch.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/ImageUtils.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/Main.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/PCAProcessor.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/PatchUtils.java
-/home/cytech/projets/projet-acp/src/main/java/com/cytech/acp/VectorizedPatch.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/Denoiser.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/ImagePatch.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/ImageUtils.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/Main.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/MainIHMAcp.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/PCAProcessor.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/PatchUtils.java
+/home/cytech/projets/projet-acp/src/main/java/com/acp/VectorizedPatch.java

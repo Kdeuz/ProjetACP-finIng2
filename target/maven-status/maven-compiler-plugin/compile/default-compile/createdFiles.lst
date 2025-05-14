@@ -1,7 +1,8 @@
-com/cytech/acp/PatchUtils.class
-com/cytech/acp/VectorizedPatch.class
-com/cytech/acp/ImagePatch.class
-com/cytech/acp/ImageUtils.class
-com/cytech/acp/Denoiser.class
-com/cytech/acp/PCAProcessor.class
-com/cytech/acp/Main.class
+com/acp/Main.class
+com/acp/ImagePatch.class
+com/acp/VectorizedPatch.class
+com/acp/PatchUtils.class
+com/acp/ImageUtils.class
+com/acp/PCAProcessor.class
+com/acp/Denoiser.class
+com/acp/MainIHMAcp.class

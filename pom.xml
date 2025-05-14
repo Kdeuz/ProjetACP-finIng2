@@ -5,7 +5,7 @@
 
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.cytech</groupId>
+  <groupId>com.acp</groupId>
   <artifactId>projet-acp</artifactId>
   <version>1.0-SNAPSHOT</version>
   <name>Projet SAE ACP - Débruitage</name>
@@ -22,7 +22,17 @@
         <artifactId>commons-math3</artifactId>
         <version>3.6.1</version>
     </dependency>
-</dependencies>
+    <dependency>
+        <groupId>org.openjfx</groupId>
+        <artifactId>javafx-controls</artifactId>
+        <version>20</version>
+    </dependency>
+    <dependency>
+        <groupId>org.openjfx</groupId>
+        <artifactId>javafx-swing</artifactId>
+        <version>20</version>
+    </dependency>
+  </dependencies>
 
   <build>
     <resources>
@@ -43,6 +53,14 @@
         <configuration>
           <source>21</source>
           <target>21</target>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.openjfx</groupId>
+        <artifactId>javafx-maven-plugin</artifactId>
+        <version>0.0.8</version>
+        <configuration>
+          <mainClass>com.acp.MainIHMAcp</mainClass>
         </configuration>
       </plugin>
     </plugins>
