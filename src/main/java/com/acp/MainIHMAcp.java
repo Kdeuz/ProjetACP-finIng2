@@ -29,6 +29,7 @@ public class MainIHMAcp extends Application {
 
     private ComboBox<String> imageCombo;
     private ComboBox<String> thresholdTypeCombo;
+    private ComboBox<String> seuilModeCombo;
     private TextField[] sigmaFields = new TextField[3];
     private TextField[] seuilFields = new TextField[3];
 
@@ -36,11 +37,9 @@ public class MainIHMAcp extends Application {
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Débruitage d'Images par ACP (Affichage)");
 
-        // Layout principal
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(10));
 
-        // Haut : Sélection image et type de seuillage
         HBox controls = new HBox(15);
         controls.setPadding(new Insets(10));
         controls.getChildren().add(new Label("Image :"));
@@ -53,7 +52,12 @@ public class MainIHMAcp extends Application {
         thresholdTypeCombo.setValue("hard");
         controls.getChildren().add(thresholdTypeCombo);
 
-        // Champs pour les sigmas
+        seuilModeCombo = new ComboBox<>();
+        seuilModeCombo.getItems().addAll("manuel", "visuShrink", "bayesShrink");
+        seuilModeCombo.setValue("manuel");
+        controls.getChildren().add(new Label("Mode seuil :"));
+        controls.getChildren().add(seuilModeCombo);
+
         controls.getChildren().add(new Label("Sigmas :"));
         for (int i = 0; i < 3; i++) {
             sigmaFields[i] = new TextField(String.valueOf(10 + i * 10));
@@ -61,7 +65,6 @@ public class MainIHMAcp extends Application {
             controls.getChildren().add(sigmaFields[i]);
         }
 
-        // Champs pour les seuils
         controls.getChildren().add(new Label("Seuils :"));
         for (int i = 0; i < 3; i++) {
             seuilFields[i] = new TextField("20");
@@ -72,24 +75,19 @@ public class MainIHMAcp extends Application {
         Button afficherButton = new Button("Afficher");
         controls.getChildren().add(afficherButton);
 
-        // Centre : Affichage des images
         GridPane imageGrid = new GridPane();
         imageGrid.setHgap(10);
         imageGrid.setVgap(10);
 
-        // Colonne 0 : Originale
         imageGrid.add(new Label("Image originale"), 0, 0);
         setImageViewSize(originalImageView);
         imageGrid.add(originalImageView, 0, 1);
 
-        // Colonnes 1-3 : Bruitées
         for (int i = 0; i < 3; i++) {
             imageGrid.add(new Label("Bruitée σ" + (i+1)), i+1, 0);
             setImageViewSize(noisyImageViews.get(i));
             imageGrid.add(noisyImageViews.get(i), i+1, 1);
         }
-
-        // Colonnes 1-3 (ligne 2) : Débruitées
         for (int i = 0; i < 3; i++) {
             imageGrid.add(new Label("Débruitée seuil " + (i+1)), i+1, 2);
             setImageViewSize(denoisedImageViews.get(i));
@@ -99,13 +97,10 @@ public class MainIHMAcp extends Application {
         root.setTop(controls);
         root.setCenter(imageGrid);
 
-        // Remplir la liste des images disponibles
         remplirListeImages();
 
-        // Action bouton afficher
         afficherButton.setOnAction(e -> lancerMainEtAfficher());
 
-        // Afficher la scène
         Scene scene = new Scene(root, 1100, 600);
         primaryStage.setScene(scene);
         primaryStage.show();
@@ -165,33 +160,36 @@ public class MainIHMAcp extends Application {
         } catch (IOException e) {
             originalImageView.setImage(null);
             showAlert("Erreur", "Image originale manquante : " + imageName);
-            e.printStackTrace();
         }
 
         // Bruitées
-        int[] sigmas = {10, 20, 30};
+        double[] sigmas = new double[3];
         for (int i = 0; i < 3; i++) {
             try {
-                String noisyPathBase = basePath + "noisy/" + baseName + "_sigma_" + sigmas[i];
+                sigmas[i] = Double.parseDouble(sigmaFields[i].getText());
+            } catch (NumberFormatException e) {
+                sigmas[i] = 10 + i * 10;
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            try {
+                String noisyPathBase = basePath + "noisy/" + baseName + "_sigma_" + (int)sigmas[i];
                 BufferedImage noisy = tryLoadImage(noisyPathBase);
                 noisyImageViews.get(i).setImage(SwingFXUtils.toFXImage(noisy, null));
             } catch (IOException e) {
                 noisyImageViews.get(i).setImage(null);
-                // Optionnel : showAlert("Erreur", "Image bruitée manquante : " + baseName + "_sigma_" + sigmas[i]);
-                e.printStackTrace();
             }
         }
 
         // Débruitées
         for (int i = 0; i < 3; i++) {
             try {
-                String denoisedPathBase = basePath + "denoised/" + thresholdType + "/" + baseName + "_sigma_" + sigmas[i];
+                String thresholdTypeValue = thresholdTypeCombo.getValue();
+                String denoisedPathBase = basePath + "denoised/" + thresholdTypeValue + "/" + baseName + "_sigma_" + (int)sigmas[i];
                 BufferedImage denoised = tryLoadImage(denoisedPathBase);
                 denoisedImageViews.get(i).setImage(SwingFXUtils.toFXImage(denoised, null));
             } catch (IOException e) {
                 denoisedImageViews.get(i).setImage(null);
-                // Optionnel : showAlert("Erreur", "Image débruitée manquante : " + baseName + "_sigma_" + sigmas[i]);
-                e.printStackTrace();
             }
         }
     }
@@ -199,12 +197,12 @@ public class MainIHMAcp extends Application {
     private void lancerMainEtAfficher() {
         String imageName = imageCombo.getValue();
         String thresholdType = thresholdTypeCombo.getValue();
-        if (imageName == null || thresholdType == null) {
-            showAlert("Erreur", "Veuillez sélectionner une image et un type de seuillage.");
+        String seuilMode = seuilModeCombo.getValue();
+        if (imageName == null || thresholdType == null || seuilMode == null) {
+            showAlert("Erreur", "Veuillez sélectionner une image, un type de seuillage et un mode de seuil.");
             return;
         }
 
-        // Récupère les sigmas et seuils depuis les champs
         double[] sigmas = new double[3];
         double[] seuils = new double[3];
         try {
@@ -225,6 +223,7 @@ public class MainIHMAcp extends Application {
                 "com.acp.Main",
                 imageName,
                 thresholdType,
+                seuilMode,
                 String.valueOf(seuils[0]),
                 String.valueOf(seuils[1]),
                 String.valueOf(seuils[2]),
@@ -242,7 +241,6 @@ public class MainIHMAcp extends Application {
             afficherImagesGenerees();
         } catch (Exception e) {
             showAlert("Erreur", "Impossible de lancer le traitement : " + e.getMessage());
-            e.printStackTrace();
         }
     }
 

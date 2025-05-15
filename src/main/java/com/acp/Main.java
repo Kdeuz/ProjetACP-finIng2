@@ -15,6 +15,7 @@ public class Main {
         List<String> imageNames;
         String imageName = null;
         String thresholdType = null;
+        String seuilMode = "manuel";
         double[] sigmas = {10, 20, 30};
         double[] thresholds = {20, 20, 20}; // Valeurs par défaut, à adapter
 
@@ -24,16 +25,18 @@ public class Main {
                 // Mode automatique (appelé par l'IHM)
                 imageName = args[0];
                 thresholdType = args[1];
-                // Optionnel : seuils en arguments 3, 4, 5
-                if (args.length >= 5) {
+                if (args.length >= 3) {
+                    seuilMode = args[2];
+                }
+
+                if (args.length >= 6) {
                     for (int i = 0; i < 3; i++) {
-                        thresholds[i] = Double.parseDouble(args[2 + i]);
+                        thresholds[i] = Double.parseDouble(args[3 + i]);
                     }
                 }
-                if (args.length >= 8) {
+                if (args.length >= 9) {
                     for (int i = 0; i < 3; i++) {
-                        thresholds[i] = Double.parseDouble(args[2 + i]);
-                        sigmas[i] = Double.parseDouble(args[5 + i]);
+                        sigmas[i] = Double.parseDouble(args[6 + i]);
                     }
                 }
             } else {
@@ -54,6 +57,9 @@ public class Main {
 
                     System.out.print("Type de seuillage (hard/soft): ");
                     thresholdType = scanner.nextLine().trim();
+
+                    System.out.print("Mode de seuil (manuel/visuShrink/bayesShrink): ");
+                    seuilMode = scanner.nextLine().trim();
 
                     for (int i = 0; i < 3; i++) {
                         System.out.print("Seuil pour sigma " + (int)sigmas[i] + " : ");
@@ -94,7 +100,17 @@ public class Main {
                 List<double[]> projected = PCAProcessor.project(centered, projection);
 
                 // 7. Appliquer le seuillage sur les coefficients projetés
-                List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, thresholds[imageCounter]);
+                double threshold;
+                if ("visuShrink".equalsIgnoreCase(seuilMode)) {
+                    threshold = Denoiser.visuShrink(sigmas[imageCounter], projected.get(0).length);
+                } else if ("bayesShrink".equalsIgnoreCase(seuilMode)) {
+                    double sigmaBruit = sigmas[imageCounter];
+                    double sigmaSignal = estimateSignalStd(projected);
+                    threshold = Denoiser.bayesShrink(sigmaBruit, sigmaSignal);
+                } else {
+                    threshold = thresholds[imageCounter];
+                }
+                List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, threshold);
 
                 // 8. Reprojeter dans l’espace original (reconstruction inverse)
                 List<double[]> reconstructedVectors = PCAProcessor.reconstruct(thresholdedProjected, projection, mean);
@@ -116,6 +132,12 @@ public class Main {
                 new File(path).getParentFile().mkdirs();
                 System.out.println("Saving image to: " + path);
                 ImageUtils.saveImage(reconstructed, path);
+
+                // 11. Calculer la MSE et le PSNR
+                double Mse= MseCalculator.calculateMSE(original, reconstructed);
+                System.out.println("MSE: " + Mse);
+                double PSNR= MseCalculator.calculatePSNR(original,reconstructed);
+                System.out.println("PSNR: " + PSNR);
 
                 imageCounter++;
             }
@@ -141,5 +163,24 @@ public class Main {
             thresholdedVectors.add(thresholdedVector);
         }
         return thresholdedVectors;
+    }
+
+    private static double estimateSignalStd(List<double[]> projected) {
+        // Calcule la variance moyenne sur tous les coefficients
+        int n = projected.size();
+        int dim = projected.get(0).length;
+        double sum = 0;
+        double sumSq = 0;
+        int count = 0;
+        for (double[] vec : projected) {
+            for (double v : vec) {
+                sum += v;
+                sumSq += v * v;
+                count++;
+            }
+        }
+        double mean = sum / count;
+        double variance = (sumSq / count) - (mean * mean);
+        return Math.sqrt(Math.max(variance, 1e-8));
     }
 }
