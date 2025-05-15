@@ -1,166 +1,249 @@
 package com.acp;
 
-import javafx.application.Application;
-import javafx.geometry.Insets;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.util.List;
-import java.util.ArrayList;
-import org.apache.commons.math3.linear.RealMatrix;
+
+import javafx.application.Application;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.stage.Stage;
 
 public class MainIHMAcp extends Application {
 
-    private ImageView originalImageView = new ImageView();
-    private ImageView noisyImageView = new ImageView();
-    private ImageView denoisedImageView = new ImageView();
+    private static final int IMG_SIZE = 400;
 
-    private File selectedFile;
+    private ImageView originalImageView = new ImageView();
+    private List<ImageView> noisyImageViews = List.of(new ImageView(), new ImageView(), new ImageView());
+    private List<ImageView> denoisedImageViews = List.of(new ImageView(), new ImageView(), new ImageView());
+
+    private ComboBox<String> imageCombo;
+    private ComboBox<String> thresholdTypeCombo;
+    private TextField[] sigmaFields = new TextField[3];
+    private TextField[] seuilFields = new TextField[3];
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Débruitage d'Images par ACP");
+        primaryStage.setTitle("Débruitage d'Images par ACP (Affichage)");
 
         // Layout principal
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(10));
 
-        // Haut : Boutons de contrôle
-        HBox controls = new HBox(10);
+        // Haut : Sélection image et type de seuillage
+        HBox controls = new HBox(15);
         controls.setPadding(new Insets(10));
-        Button loadButton = new Button("Charger une image");
-        Button denoiseButton = new Button("Débruiter");
-        controls.getChildren().addAll(loadButton, denoiseButton);
+        controls.getChildren().add(new Label("Image :"));
+        imageCombo = new ComboBox<>();
+        controls.getChildren().add(imageCombo);
+
+        controls.getChildren().add(new Label("Type de seuillage :"));
+        thresholdTypeCombo = new ComboBox<>();
+        thresholdTypeCombo.getItems().addAll("hard", "soft");
+        thresholdTypeCombo.setValue("hard");
+        controls.getChildren().add(thresholdTypeCombo);
+
+        // Champs pour les sigmas
+        controls.getChildren().add(new Label("Sigmas :"));
+        for (int i = 0; i < 3; i++) {
+            sigmaFields[i] = new TextField(String.valueOf(10 + i * 10));
+            sigmaFields[i].setPrefWidth(50);
+            controls.getChildren().add(sigmaFields[i]);
+        }
+
+        // Champs pour les seuils
+        controls.getChildren().add(new Label("Seuils :"));
+        for (int i = 0; i < 3; i++) {
+            seuilFields[i] = new TextField("20");
+            seuilFields[i].setPrefWidth(50);
+            controls.getChildren().add(seuilFields[i]);
+        }
+
+        Button afficherButton = new Button("Afficher");
+        controls.getChildren().add(afficherButton);
 
         // Centre : Affichage des images
         GridPane imageGrid = new GridPane();
         imageGrid.setHgap(10);
         imageGrid.setVgap(10);
-        imageGrid.add(new Label("Image originale"), 0, 0);
-        imageGrid.add(originalImageView, 0, 1);
-        imageGrid.add(new Label("Image bruitée"), 1, 0);
-        imageGrid.add(noisyImageView, 1, 1);
-        imageGrid.add(new Label("Image débruitée"), 2, 0);
-        imageGrid.add(denoisedImageView, 2, 1);
 
-        // Bas : Paramètres de seuillage
-        VBox thresholdingBox = new VBox(10);
-        thresholdingBox.setPadding(new Insets(10));
-        ComboBox<String> thresholdTypeCombo = new ComboBox<>();
-        thresholdTypeCombo.getItems().addAll("Hard", "Soft");
-        thresholdTypeCombo.setValue("Hard");
-        TextField thresholdValueField = new TextField();
-        thresholdValueField.setPromptText("Valeur du seuil");
-        thresholdingBox.getChildren().addAll(new Label("Type de seuillage"), thresholdTypeCombo, new Label("Valeur du seuil"), thresholdValueField);
+        // Colonne 0 : Originale
+        imageGrid.add(new Label("Image originale"), 0, 0);
+        setImageViewSize(originalImageView);
+        imageGrid.add(originalImageView, 0, 1);
+
+        // Colonnes 1-3 : Bruitées
+        for (int i = 0; i < 3; i++) {
+            imageGrid.add(new Label("Bruitée σ" + (i+1)), i+1, 0);
+            setImageViewSize(noisyImageViews.get(i));
+            imageGrid.add(noisyImageViews.get(i), i+1, 1);
+        }
+
+        // Colonnes 1-3 (ligne 2) : Débruitées
+        for (int i = 0; i < 3; i++) {
+            imageGrid.add(new Label("Débruitée seuil " + (i+1)), i+1, 2);
+            setImageViewSize(denoisedImageViews.get(i));
+            imageGrid.add(denoisedImageViews.get(i), i+1, 3);
+        }
 
         root.setTop(controls);
         root.setCenter(imageGrid);
-        root.setBottom(thresholdingBox);
 
-        // Actions des boutons
-        loadButton.setOnAction(e -> loadImage(primaryStage));
-        denoiseButton.setOnAction(e -> {
-            String thresholdType = thresholdTypeCombo.getValue();
-            double thresholdValue;
-            try {
-                thresholdValue = Double.parseDouble(thresholdValueField.getText());
-            } catch (NumberFormatException ex) {
-                showAlert("Erreur", "Veuillez entrer une valeur numérique pour le seuil.");
-                return;
-            }
-            denoiseImage(thresholdType, thresholdValue);
-        });
+        // Remplir la liste des images disponibles
+        remplirListeImages();
+
+        // Action bouton afficher
+        afficherButton.setOnAction(e -> lancerMainEtAfficher());
 
         // Afficher la scène
-        Scene scene = new Scene(root, 800, 600);
+        Scene scene = new Scene(root, 1100, 600);
         primaryStage.setScene(scene);
         primaryStage.show();
     }
 
-    private void loadImage(Stage stage) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Sélectionner une image");
-        fileChooser.getExtensionFilters().addAll(
-                new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.webp")
-        );
-        selectedFile = fileChooser.showOpenDialog(stage);
-        if (selectedFile != null) {
+    private void setImageViewSize(ImageView iv) {
+        iv.setFitWidth(IMG_SIZE);
+        iv.setFitHeight(IMG_SIZE);
+        iv.setPreserveRatio(true);
+        iv.setSmooth(true);
+    }
+
+    private void remplirListeImages() {
+        try {
+            String basePath = "src/main/resources/images/train/originals/";
+            List<String> imageNames = ImageUtils.listImg(basePath).stream()
+                .filter(name -> name.toLowerCase().endsWith(".jpg") || name.toLowerCase().endsWith(".png") || name.toLowerCase().endsWith(".jpeg"))
+                .toList();
+            imageCombo.getItems().clear();
+            imageCombo.getItems().addAll(imageNames);
+            if (!imageNames.isEmpty()) {
+                imageCombo.setValue(imageNames.get(0));
+            }
+        } catch (IOException e) {
+            showAlert("Erreur", "Impossible de lister les images originales.");
+            e.printStackTrace();
+        }
+    }
+
+    private BufferedImage tryLoadImage(String pathWithoutExt) throws IOException {
+        IOException lastException = null;
+        for (String ext : new String[]{".png", ".jpg", ".jpeg"}) {
             try {
-                BufferedImage original = ImageUtils.loadImage(selectedFile.getAbsolutePath());
-                originalImageView.setImage(convertToFxImage(original));
+                return ImageUtils.loadImage(pathWithoutExt + ext);
             } catch (IOException e) {
-                showAlert("Erreur", "Impossible de charger l'image.");
+                lastException = e;
+            }
+        }
+        throw lastException != null ? lastException : new IOException("Image not found: " + pathWithoutExt);
+    }
+
+    private void afficherImagesGenerees() {
+        String imageName = imageCombo.getValue();
+        String thresholdType = thresholdTypeCombo.getValue();
+        if (imageName == null || thresholdType == null) {
+            showAlert("Erreur", "Veuillez sélectionner une image et un type de seuillage.");
+            return;
+        }
+        String baseName = imageName.replaceAll("\\.[^.]+$", "");
+        String basePath = "src/main/resources/images/train/";
+
+        // Original
+        try {
+            String originalPathBase = basePath + "originals/" + baseName;
+            BufferedImage original = tryLoadImage(originalPathBase);
+            originalImageView.setImage(SwingFXUtils.toFXImage(original, null));
+        } catch (IOException e) {
+            originalImageView.setImage(null);
+            showAlert("Erreur", "Image originale manquante : " + imageName);
+            e.printStackTrace();
+        }
+
+        // Bruitées
+        int[] sigmas = {10, 20, 30};
+        for (int i = 0; i < 3; i++) {
+            try {
+                String noisyPathBase = basePath + "noisy/" + baseName + "_sigma_" + sigmas[i];
+                BufferedImage noisy = tryLoadImage(noisyPathBase);
+                noisyImageViews.get(i).setImage(SwingFXUtils.toFXImage(noisy, null));
+            } catch (IOException e) {
+                noisyImageViews.get(i).setImage(null);
+                // Optionnel : showAlert("Erreur", "Image bruitée manquante : " + baseName + "_sigma_" + sigmas[i]);
+                e.printStackTrace();
+            }
+        }
+
+        // Débruitées
+        for (int i = 0; i < 3; i++) {
+            try {
+                String denoisedPathBase = basePath + "denoised/" + thresholdType + "/" + baseName + "_sigma_" + sigmas[i];
+                BufferedImage denoised = tryLoadImage(denoisedPathBase);
+                denoisedImageViews.get(i).setImage(SwingFXUtils.toFXImage(denoised, null));
+            } catch (IOException e) {
+                denoisedImageViews.get(i).setImage(null);
+                // Optionnel : showAlert("Erreur", "Image débruitée manquante : " + baseName + "_sigma_" + sigmas[i]);
+                e.printStackTrace();
             }
         }
     }
 
-    private void denoiseImage(String thresholdType, double thresholdValue) {
-        if (selectedFile == null) {
-            showAlert("Erreur", "Veuillez d'abord charger une image.");
+    private void lancerMainEtAfficher() {
+        String imageName = imageCombo.getValue();
+        String thresholdType = thresholdTypeCombo.getValue();
+        if (imageName == null || thresholdType == null) {
+            showAlert("Erreur", "Veuillez sélectionner une image et un type de seuillage.");
+            return;
+        }
+
+        // Récupère les sigmas et seuils depuis les champs
+        double[] sigmas = new double[3];
+        double[] seuils = new double[3];
+        try {
+            for (int i = 0; i < 3; i++) {
+                sigmas[i] = Double.parseDouble(sigmaFields[i].getText());
+                seuils[i] = Double.parseDouble(seuilFields[i].getText());
+            }
+        } catch (NumberFormatException e) {
+            showAlert("Erreur", "Veuillez entrer des valeurs numériques pour les sigmas et seuils.");
             return;
         }
 
         try {
-            // Charger l'image originale
-            BufferedImage original = ImageUtils.loadImage(selectedFile.getAbsolutePath());
-
-            // Ajouter du bruit
-            double sigma = 20; // Exemple d'écart-type
-            BufferedImage noisy = ImageUtils.noising(original, sigma);
-            noisyImageView.setImage(convertToFxImage(noisy));
-
-            // Débruiter
-            List<ImagePatch> patches = PatchUtils.extractPatches(noisy, 8, 4);
-            List<VectorizedPatch> vectorPatches = PatchUtils.vectorPatches(patches);
-            List<double[]> vectors = vectorPatches.stream().map(VectorizedPatch::getVector).toList();
-
-            double[] mean = PCAProcessor.computeMean(vectors);
-            List<double[]> centered = PCAProcessor.centerData(vectors, mean);
-            RealMatrix projection = PCAProcessor.performPCA(centered);
-            List<double[]> projected = PCAProcessor.project(centered, projection);
-            List<double[]> thresholded = applyThresholding(projected, thresholdType, thresholdValue);
-            List<double[]> reconstructed = PCAProcessor.reconstruct(thresholded, projection, mean);
-
-            List<VectorizedPatch> reconstructedPatches = new ArrayList<>();
-            for (int i = 0; i < vectorPatches.size(); i++) {
-                reconstructedPatches.add(new VectorizedPatch(reconstructed.get(i),
-                        vectorPatches.get(i).getX(),
-                        vectorPatches.get(i).getY(),
-                        vectorPatches.get(i).getSize()));
+            ProcessBuilder pb = new ProcessBuilder(
+                "java",
+                "-cp", "target/classes:" +
+                       System.getProperty("user.home") + "/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar",
+                "com.acp.Main",
+                imageName,
+                thresholdType,
+                String.valueOf(seuils[0]),
+                String.valueOf(seuils[1]),
+                String.valueOf(seuils[2]),
+                String.valueOf(sigmas[0]),
+                String.valueOf(sigmas[1]),
+                String.valueOf(sigmas[2])
+            );
+            pb.inheritIO();
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                showAlert("Erreur", "Erreur lors de la génération des images (code " + exitCode + ").");
+                return;
             }
-
-            BufferedImage denoised = PatchUtils.reconstruct(reconstructedPatches, noisy.getWidth(), noisy.getHeight());
-            denoisedImageView.setImage(convertToFxImage(denoised));
-
-        } catch (IOException e) {
-            showAlert("Erreur", "Une erreur est survenue lors du débruitage.");
+            afficherImagesGenerees();
+        } catch (Exception e) {
+            showAlert("Erreur", "Impossible de lancer le traitement : " + e.getMessage());
+            e.printStackTrace();
         }
-    }
-
-    private Image convertToFxImage(BufferedImage bufferedImage) {
-        return javafx.embed.swing.SwingFXUtils.toFXImage(bufferedImage, null);
-    }
-
-    private List<double[]> applyThresholding(List<double[]> vectors, String thresholdType, double threshold) {
-        return vectors.stream().map(vector -> {
-            double[] thresholded = new double[vector.length];
-            for (int i = 0; i < vector.length; i++) {
-                if ("Hard".equalsIgnoreCase(thresholdType)) {
-                    thresholded[i] = Denoiser.hardThreshold(vector[i], threshold);
-                } else {
-                    thresholded[i] = Denoiser.softThreshold(vector[i], threshold);
-                }
-            }
-            return thresholded;
-        }).toList();
     }
 
     private void showAlert(String title, String message) {
