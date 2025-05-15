@@ -1,6 +1,7 @@
 package com.acp;
 
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,92 +11,118 @@ import org.apache.commons.math3.linear.RealMatrix;
 
 public class Main {
     public static void main(String[] args) {
-        try (Scanner scanner = new Scanner(System.in)) {
-            /*
-             * Il faut ajouter l'implémentation de la fonction qui permet d'afficher toutes les images disponibles dans le dossier et laisser le choix à l'utilisateur de choisir une image.
-             */
-            // 1. Charger l'image
-            String sourcePath = "src/main/resources/images/train/";
-            List<String> imageNames = ImageUtils.listImg(sourcePath + "originals/");
-            System.out.println("Liste des images disponibles : ");
-            for (int i = 0; i < imageNames.size(); i++) {
-                System.out.println((i + 1) + ": " + imageNames.get(i));
-            }
-            System.out.print("Choisissez une image (1-" + imageNames.size() + "): ");
-            int imageIndex = scanner.nextInt() - 1;
-            scanner.nextLine(); // Consommer le caractère de nouvelle ligne restant
-            if (imageIndex < 0 || imageIndex >= imageNames.size()) {
-                System.out.println("Index d'image invalide.");
-                return;
-            }
-            String imageName = imageNames.get(imageIndex);
+        String sourcePath = "src/main/resources/images/train/";
+        List<String> imageNames;
+        String imageName = null;
+        String thresholdType = null;
+        double[] sigmas = {10, 20, 30};
+        double[] thresholds = {20, 20, 20}; // Valeurs par défaut, à adapter
 
+        try {
+            imageNames = ImageUtils.listImg(sourcePath + "originals/");
+            if (args.length >= 2) {
+                // Mode automatique (appelé par l'IHM)
+                imageName = args[0];
+                thresholdType = args[1];
+                // Optionnel : seuils en arguments 3, 4, 5
+                if (args.length >= 5) {
+                    for (int i = 0; i < 3; i++) {
+                        thresholds[i] = Double.parseDouble(args[2 + i]);
+                    }
+                }
+                if (args.length >= 8) {
+                    for (int i = 0; i < 3; i++) {
+                        thresholds[i] = Double.parseDouble(args[2 + i]);
+                        sigmas[i] = Double.parseDouble(args[5 + i]);
+                    }
+                }
+            } else {
+                // Mode interactif console
+                try (Scanner scanner = new Scanner(System.in)) {
+                    System.out.println("Liste des images disponibles : ");
+                    for (int i = 0; i < imageNames.size(); i++) {
+                        System.out.println((i + 1) + ": " + imageNames.get(i));
+                    }
+                    System.out.print("Choisissez une image (1-" + imageNames.size() + "): ");
+                    int imageIndex = scanner.nextInt() - 1;
+                    scanner.nextLine();
+                    if (imageIndex < 0 || imageIndex >= imageNames.size()) {
+                        System.out.println("Index d'image invalide.");
+                        return;
+                    }
+                    imageName = imageNames.get(imageIndex);
+
+                    System.out.print("Type de seuillage (hard/soft): ");
+                    thresholdType = scanner.nextLine().trim();
+
+                    for (int i = 0; i < 3; i++) {
+                        System.out.print("Seuil pour sigma " + (int)sigmas[i] + " : ");
+                        thresholds[i] = scanner.nextDouble();
+                        scanner.nextLine();
+                    }
+                }
+            }
 
             String originalPath = sourcePath + "originals/" + imageName;
-            String targetPath = sourcePath + "noisy/";
+            File originalFile = new File(originalPath);
+            if (!originalFile.exists()) {
+                System.err.println("Image originale introuvable : " + originalPath);
+                System.exit(1);
+            }
             BufferedImage original = ImageUtils.loadImage(originalPath);
-            
-            
+
             // 2. Ajouter du bruit
-            double[] sigmas = {10,20,30};
-            List<BufferedImage> noisyImages = ImageUtils.generateNoisyImages(original, sigmas, originalPath,targetPath);
-            int imageCounter = 1; // Initialiser un compteur pour les images sauvegardées
+            String targetPath = sourcePath + "noisy/";
+            List<BufferedImage> noisyImages = ImageUtils.generateNoisyImages(original, sigmas, originalPath, targetPath);
+            int imageCounter = 0;
             for (BufferedImage noisy : noisyImages) {
                 // 3. Extraire les patchs
                 List<ImagePatch> patches = PatchUtils.extractPatches(noisy, 8, 4);
-                
+
                 // 4. Vectoriser les patchs
-                List<VectorizedPatch> vectorPatches = new ArrayList<>();
-                vectorPatches.addAll(PatchUtils.vectorPatches(patches));
-                
+                List<VectorizedPatch> vectorPatches = PatchUtils.vectorPatches(patches);
+
                 // 5. ACP et débruitage
                 List<double[]> vectors = new ArrayList<>();
                 for (VectorizedPatch vp : vectorPatches) vectors.add(vp.getVector());
-                
+
                 double[] mean = PCAProcessor.computeMean(vectors);
                 List<double[]> centered = PCAProcessor.centerData(vectors, mean);
                 RealMatrix projection = PCAProcessor.performPCA(centered);
 
-                // 6. Choisir le type de seuillage
-                System.out.println("Choisissez le type de seuillage (hard/soft) : ");
-                String thresholdType = scanner.nextLine().trim();
-                System.out.println("Entrez la valeur du seuil : ");
-                double threshold = scanner.nextDouble();
-                scanner.nextLine(); // Consommer le caractère de nouvelle ligne restant
-
-                // Projeter sur les composantes principales
+                // 6. Projeter sur les composantes principales
                 List<double[]> projected = PCAProcessor.project(centered, projection);
 
-                // Appliquer le seuillage sur les coefficients projetés
-                List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, threshold);
+                // 7. Appliquer le seuillage sur les coefficients projetés
+                List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, thresholds[imageCounter]);
 
-                // Reprojeter dans l’espace original (reconstruction inverse)
+                // 8. Reprojeter dans l’espace original (reconstruction inverse)
                 List<double[]> reconstructedVectors = PCAProcessor.reconstruct(thresholdedProjected, projection, mean);
-                            
-                // Reconstruire les patchs vectorisés
+
+                // 9. Reconstruire les patchs vectorisés
                 List<VectorizedPatch> thresholdedPatches = new ArrayList<>();
                 for (int i = 0; i < vectorPatches.size(); i++) {
-                    thresholdedPatches.add(new VectorizedPatch(reconstructedVectors.get(i), 
-                                                            vectorPatches.get(i).getX(), 
-                                                            vectorPatches.get(i).getY(), 
-                                                            vectorPatches.get(i).getSize()));
+                    thresholdedPatches.add(new VectorizedPatch(reconstructedVectors.get(i),
+                            vectorPatches.get(i).getX(),
+                            vectorPatches.get(i).getY(),
+                            vectorPatches.get(i).getSize()));
                 }
-                
-                // 7. Reconstruire l'image
-                BufferedImage reconstructed = PatchUtils.reconstruct(thresholdedPatches, 
-                    noisy.getWidth(), noisy.getHeight());
-                String path = sourcePath + "denoised/" + thresholdType + "/" + imageCounter + "_" + imageName;
+
+                // 10. Reconstruire l'image
+                BufferedImage reconstructed = PatchUtils.reconstruct(thresholdedPatches,
+                        noisy.getWidth(), noisy.getHeight());
+                String baseName = imageName.replaceAll("\\.[^.]+$", "");
+                String path = sourcePath + "denoised/" + thresholdType + "/" + baseName + "_sigma_" + (int)sigmas[imageCounter] + ".png";
+                new File(path).getParentFile().mkdirs();
                 System.out.println("Saving image to: " + path);
                 ImageUtils.saveImage(reconstructed, path);
 
-                imageCounter++; // Incrémenter le compteur après chaque sauvegarde
-            
+                imageCounter++;
             }
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println("Failed to save image: " + e.getMessage());
         }
-            
     }
 
     private static List<double[]> applyThresholding(List<double[]> vectors, String thresholdType, double threshold) {
