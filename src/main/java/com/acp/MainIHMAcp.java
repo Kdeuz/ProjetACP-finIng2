@@ -30,6 +30,7 @@ public class MainIHMAcp extends Application {
     private ComboBox<String> imageCombo;
     private ComboBox<String> thresholdTypeCombo;
     private ComboBox<String> seuilModeCombo;
+    private ComboBox<String> acpModeCombo;
     private TextField[] sigmaFields = new TextField[3];
     private TextField[] seuilFields = new TextField[3];
 
@@ -58,6 +59,12 @@ public class MainIHMAcp extends Application {
         controls.getChildren().add(new Label("Mode seuil :"));
         controls.getChildren().add(seuilModeCombo);
 
+        acpModeCombo = new ComboBox<>();
+        acpModeCombo.getItems().addAll("global", "local");
+        acpModeCombo.setValue("global");
+        controls.getChildren().add(new Label("Mode ACP :"));
+        controls.getChildren().add(acpModeCombo);
+
         controls.getChildren().add(new Label("Sigmas :"));
         for (int i = 0; i < 3; i++) {
             sigmaFields[i] = new TextField(String.valueOf(10 + i * 10));
@@ -71,6 +78,15 @@ public class MainIHMAcp extends Application {
             seuilFields[i].setPrefWidth(50);
             controls.getChildren().add(seuilFields[i]);
         }
+
+        seuilModeCombo.setOnAction(e -> {
+            boolean manuel = "manuel".equalsIgnoreCase(seuilModeCombo.getValue());
+            for (TextField tf : seuilFields) {
+                tf.setDisable(!manuel);
+            }
+        });
+
+        seuilModeCombo.getOnAction().handle(null);
 
         Button afficherButton = new Button("Afficher");
         controls.getChildren().add(afficherButton);

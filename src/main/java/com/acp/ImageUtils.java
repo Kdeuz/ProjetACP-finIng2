@@ -106,4 +106,66 @@ public class ImageUtils {
         }
         return listImages;
     }
+
+        /**
+    * Divise une image en quatre parties égales.
+    * @param image L'image à diviser.
+    * @return Un tableau contenant les quatre sous-images :
+    *         - [0] Partie supérieure gauche
+    *         - [1] Partie supérieure droite
+    *         - [2] Partie inférieure gauche
+    *         - [3] Partie inférieure droite
+    */
+
+    public static BufferedImage[] divisionEnQuatre(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        // Calculer les dimensions des sous-images
+        int halfWidth = width / 2;
+        int halfHeight = height / 2;
+
+        // Ajuster les dimensions pour inclure les pixels restants
+        int widthRemainder = width % 2;
+        int heightRemainder = height % 2;
+
+        BufferedImage[] parts = new BufferedImage[4];
+
+        parts[0] = image.getSubimage(0, 0, halfWidth, halfHeight); // Partie supérieure gauche
+        parts[1] = image.getSubimage(halfWidth, 0, halfWidth + widthRemainder, halfHeight); // Partie supérieure droite
+        parts[2] = image.getSubimage(0, halfHeight, halfWidth, halfHeight + heightRemainder); // Partie inférieure gauche
+        parts[3] = image.getSubimage(halfWidth, halfHeight, halfWidth + widthRemainder, halfHeight + heightRemainder); // Partie inférieure droite
+
+        return parts;
+    }
+
+    /**
+     * Fusionne quatre images en une seule image.
+    * Les images doivent être disposées comme suit :
+    * - [0] Partie supérieure gauche
+    * - [1] Partie supérieure droite
+    * - [2] Partie inférieure gauche
+    * - [3] Partie inférieure droite
+    * @param images Tableau contenant les quatre images à fusionner.
+    * @return Une image fusionnée composée des quatre images d'entrée.
+    */
+
+    public static BufferedImage fusionnerImages(BufferedImage[] images) {
+        // Calculer les dimensions totales de l'image fusionnée
+        int width = images[0].getWidth() + images[1].getWidth();
+        int height = images[0].getHeight() + images[2].getHeight();
+
+        // Créer une nouvelle image pour la fusion
+        BufferedImage mergedImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+
+        // Placer les images dans la nouvelle image
+        mergedImage.getGraphics().drawImage(images[0], 0, 0, null); // Partie supérieure gauche
+        mergedImage.getGraphics().drawImage(images[1], images[0].getWidth(), 0, null); // Partie supérieure droite
+        mergedImage.getGraphics().drawImage(images[2], 0, images[0].getHeight(), null); // Partie inférieure gauche
+        mergedImage.getGraphics().drawImage(images[3], images[0].getWidth(), images[0].getHeight(), null); // Partie inférieure droite
+
+        return mergedImage;
+    }
+
+
 }

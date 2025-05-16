@@ -18,6 +18,7 @@ public class Main {
         String seuilMode = "manuel";
         double[] sigmas = {10, 20, 30};
         double[] thresholds = {20, 20, 20}; // Valeurs par défaut, à adapter
+        String acpMode = "global";
 
         try {
             imageNames = ImageUtils.listImg(sourcePath + "originals/");
@@ -27,6 +28,10 @@ public class Main {
                 thresholdType = args[1];
                 if (args.length >= 3) {
                     seuilMode = args[2];
+                }
+
+                if (args.length >= 4) {
+                    acpMode = args[3];
                 }
 
                 if (args.length >= 6) {
@@ -61,10 +66,14 @@ public class Main {
                     System.out.print("Mode de seuil (manuel/visuShrink/bayesShrink): ");
                     seuilMode = scanner.nextLine().trim();
 
-                    for (int i = 0; i < 3; i++) {
-                        System.out.print("Seuil pour sigma " + (int)sigmas[i] + " : ");
-                        thresholds[i] = scanner.nextDouble();
-                        scanner.nextLine();
+                    if ("manuel".equalsIgnoreCase(seuilMode)) {
+                        for (int i = 0; i < 3; i++) {
+                            System.out.print("Seuil pour sigma " + (int)sigmas[i] + " : ");
+                            thresholds[i] = scanner.nextDouble();
+                            scanner.nextLine();
+                        }
+                    } else {
+                        System.out.println("Seuils automatiques (" + seuilMode + "), aucune saisie manuelle demandée.");
                     }
                 }
             }
@@ -82,61 +91,22 @@ public class Main {
             List<BufferedImage> noisyImages = ImageUtils.generateNoisyImages(original, sigmas, originalPath, targetPath);
             int imageCounter = 0;
             for (BufferedImage noisy : noisyImages) {
-                // 3. Extraire les patchs
-                List<ImagePatch> patches = PatchUtils.extractPatches(noisy, 8, 4);
-
-                // 4. Vectoriser les patchs
-                List<VectorizedPatch> vectorPatches = PatchUtils.vectorPatches(patches);
-
-                // 5. ACP et débruitage
-                List<double[]> vectors = new ArrayList<>();
-                for (VectorizedPatch vp : vectorPatches) vectors.add(vp.getVector());
-
-                double[] mean = PCAProcessor.computeMean(vectors);
-                List<double[]> centered = PCAProcessor.centerData(vectors, mean);
-                RealMatrix projection = PCAProcessor.performPCA(centered);
-
-                // 6. Projeter sur les composantes principales
-                List<double[]> projected = PCAProcessor.project(centered, projection);
-
-                // 7. Appliquer le seuillage sur les coefficients projetés
-                double threshold;
-                if ("visuShrink".equalsIgnoreCase(seuilMode)) {
-                    threshold = Denoiser.visuShrink(sigmas[imageCounter], projected.get(0).length);
-                } else if ("bayesShrink".equalsIgnoreCase(seuilMode)) {
-                    double sigmaBruit = sigmas[imageCounter];
-                    double sigmaSignal = estimateSignalStd(projected);
-                    threshold = Denoiser.bayesShrink(sigmaBruit, sigmaSignal);
+                BufferedImage denoised;
+                if ("local".equalsIgnoreCase(acpMode)) {
+                    denoised = acpLocal(noisy, sigmas, thresholds, thresholdType, seuilMode, imageCounter, imageName, sourcePath);
                 } else {
-                    threshold = thresholds[imageCounter];
+                    denoised = acpGlobal(noisy, sigmas, thresholds, thresholdType, seuilMode, imageCounter, imageName, sourcePath);
                 }
-                List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, threshold);
-
-                // 8. Reprojeter dans l’espace original (reconstruction inverse)
-                List<double[]> reconstructedVectors = PCAProcessor.reconstruct(thresholdedProjected, projection, mean);
-
-                // 9. Reconstruire les patchs vectorisés
-                List<VectorizedPatch> thresholdedPatches = new ArrayList<>();
-                for (int i = 0; i < vectorPatches.size(); i++) {
-                    thresholdedPatches.add(new VectorizedPatch(reconstructedVectors.get(i),
-                            vectorPatches.get(i).getX(),
-                            vectorPatches.get(i).getY(),
-                            vectorPatches.get(i).getSize()));
-                }
-
-                // 10. Reconstruire l'image
-                BufferedImage reconstructed = PatchUtils.reconstruct(thresholdedPatches,
-                        noisy.getWidth(), noisy.getHeight());
                 String baseName = imageName.replaceAll("\\.[^.]+$", "");
                 String path = sourcePath + "denoised/" + thresholdType + "/" + baseName + "_sigma_" + (int)sigmas[imageCounter] + ".png";
                 new File(path).getParentFile().mkdirs();
                 System.out.println("Saving image to: " + path);
-                ImageUtils.saveImage(reconstructed, path);
+                ImageUtils.saveImage(denoised, path);
 
                 // 11. Calculer la MSE et le PSNR
-                double Mse= MseCalculator.calculateMSE(original, reconstructed);
+                double Mse= MseCalculator.calculateMSE(original, denoised);
                 System.out.println("MSE: " + Mse);
-                double PSNR= MseCalculator.calculatePSNR(original,reconstructed);
+                double PSNR= MseCalculator.calculatePSNR(original,denoised);
                 System.out.println("PSNR: " + PSNR);
 
                 imageCounter++;
@@ -145,6 +115,66 @@ public class Main {
             e.printStackTrace();
             System.err.println("Failed to save image: " + e.getMessage());
         }
+    }
+
+    private static BufferedImage acpGlobal(BufferedImage noisy, double[] sigmas, double[] thresholds, String thresholdType, String seuilMode, int imageCounter, String imageName, String sourcePath) {
+        // 3. Extraire les patchs
+        List<ImagePatch> patches = PatchUtils.extractPatches(noisy, 8, 4);
+
+        // 4. Vectoriser les patchs
+        List<VectorizedPatch> vectorPatches = PatchUtils.vectorPatches(patches);
+
+        // 5. ACP et débruitage
+        List<double[]> vectors = new ArrayList<>();
+        for (VectorizedPatch vp : vectorPatches) vectors.add(vp.getVector());
+
+        Object[] acpResult = PCAProcessor.acp(vectors);
+        double[] mean = (double[]) acpResult[0];
+        RealMatrix Gamma = (RealMatrix) acpResult[1];
+        List<double[]> centered = (List<double[]>) acpResult[2];
+        RealMatrix projection = (RealMatrix) acpResult[3];
+        double[] eigenValues = (double[]) acpResult[4];
+
+        // 6. Projeter sur les composantes principales
+        List<double[]> projected = PCAProcessor.project(centered, projection);
+
+        // 7. Appliquer le seuillage sur les coefficients projetés
+        double threshold;
+        if ("visuShrink".equalsIgnoreCase(seuilMode)) {
+            threshold = Denoiser.visuShrink(sigmas[imageCounter], projected.get(0).length);
+        } else if ("bayesShrink".equalsIgnoreCase(seuilMode)) {
+            double sigmaBruit = sigmas[imageCounter];
+            double sigmaSignal = estimateSignalStd(projected);
+            threshold = Denoiser.bayesShrink(sigmaBruit, sigmaSignal);
+        } else {
+            threshold = thresholds[imageCounter];
+        }
+        List<double[]> thresholdedProjected = applyThresholding(projected, thresholdType, threshold);
+
+        // 8. Reprojeter dans l’espace original (reconstruction inverse)
+        List<double[]> reconstructedVectors = PCAProcessor.reconstruct(thresholdedProjected, projection, mean);
+
+        // 9. Reconstruire les patchs vectorisés
+        List<VectorizedPatch> thresholdedPatches = new ArrayList<>();
+        for (int i = 0; i < vectorPatches.size(); i++) {
+            thresholdedPatches.add(new VectorizedPatch(reconstructedVectors.get(i),
+                    vectorPatches.get(i).getX(),
+                    vectorPatches.get(i).getY(),
+                    vectorPatches.get(i).getSize()));
+        }
+
+        // 10. Reconstruire l'image
+        return PatchUtils.reconstruct(thresholdedPatches,
+                noisy.getWidth(), noisy.getHeight());
+    }
+
+    private static BufferedImage acpLocal(BufferedImage noisy, double[] sigmas, double[] thresholds, String thresholdType, String seuilMode, int imageCounter, String imageName, String sourcePath) {
+        BufferedImage[] subImages = ImageUtils.divisionEnQuatre(noisy);
+        BufferedImage[] denoisedParts = new BufferedImage[4];
+        for (int i = 0; i < 4; i++) {
+            denoisedParts[i] = acpGlobal(subImages[i], sigmas, thresholds, thresholdType, seuilMode, imageCounter, imageName, sourcePath);
+        }
+        return ImageUtils.fusionnerImages(denoisedParts);
     }
 
     private static List<double[]> applyThresholding(List<double[]> vectors, String thresholdType, double threshold) {

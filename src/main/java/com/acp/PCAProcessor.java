@@ -96,4 +96,47 @@ public class PCAProcessor {
             .toList();
     }
 
+    /**
+     * Calcule le vecteur moyen, la matrice de covariance et les vecteurs centrés
+     */
+    public static Object[] moyCov(List<double[]> V) {
+        double[] mV = computeMean(V);
+        List<double[]> Vc = centerData(V, mV);
+        RealMatrix Gamma = MatrixUtils.createRealMatrix(mV.length, mV.length);
+        for (double[] centeredV : Vc) {
+            RealVector vector = MatrixUtils.createRealVector(centeredV);
+            Gamma = Gamma.add(vector.outerProduct(vector));
+        }
+        Gamma = Gamma.scalarMultiply(1.0 / V.size());
+        return new Object[] {mV, Gamma, Vc};
+    }
+
+    /**
+     * Effectue une ACP complète sur une liste de vecteurs
+     */
+    public static Object[] acp(List<double[]> V) {
+        Object[] moyCovResult = moyCov(V);
+        double[] mV = (double[]) moyCovResult[0];
+        RealMatrix Gamma = (RealMatrix) moyCovResult[1];
+        List<double[]> Vc = (List<double[]>) moyCovResult[2];
+
+        EigenDecomposition eigenDecomp = new EigenDecomposition(Gamma);
+        double[] eigenValues = eigenDecomp.getRealEigenvalues();
+        RealMatrix eigenVectors = eigenDecomp.getV();
+
+        int dim = eigenValues.length;
+        Integer[] indices = new Integer[dim];
+        for (int i = 0; i < dim; i++) indices[i] = i;
+        java.util.Arrays.sort(indices, (i, j) -> Double.compare(eigenValues[j], eigenValues[i]));
+
+        double[] sortedEigenValues = new double[dim];
+        RealMatrix sortedEigenVectors = MatrixUtils.createRealMatrix(dim, dim);
+        for (int i = 0; i < dim; i++) {
+            int idx = indices[i];
+            sortedEigenValues[i] = eigenValues[idx];
+            sortedEigenVectors.setColumnVector(i, eigenDecomp.getEigenvector(idx));
+        }
+        return new Object[] {mV, Gamma, Vc, sortedEigenVectors, sortedEigenValues};
+    }
+
 }
