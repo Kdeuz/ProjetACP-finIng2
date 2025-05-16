@@ -131,7 +131,7 @@ public class MainIHMAcp extends Application {
 
     private void remplirListeImages() {
         try {
-            String basePath = "src/main/resources/images/train/originals/";
+            String basePath = "src/main/resources/images/originals/";
             List<String> imageNames = ImageUtils.listImg(basePath).stream()
                 .filter(name -> name.toLowerCase().endsWith(".jpg") || name.toLowerCase().endsWith(".png") || name.toLowerCase().endsWith(".jpeg"))
                 .toList();
@@ -166,7 +166,7 @@ public class MainIHMAcp extends Application {
             return;
         }
         String baseName = imageName.replaceAll("\\.[^.]+$", "");
-        String basePath = "src/main/resources/images/train/";
+        String basePath = "src/main/resources/images/";
 
         // Original
         try {

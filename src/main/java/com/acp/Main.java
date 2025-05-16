@@ -11,7 +11,7 @@ import org.apache.commons.math3.linear.RealMatrix;
 
 public class Main {
     public static void main(String[] args) {
-        String sourcePath = "src/main/resources/images/train/";
+        String sourcePath = "src/main/resources/images/";
         List<String> imageNames;
         String imageName = null;
         String thresholdType = null;
